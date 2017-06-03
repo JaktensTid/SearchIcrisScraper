@@ -66,11 +66,11 @@ class Dates:
         if start:
             self._start = datetime.strptime(start, self.format)
         else:
-            self._start = datetime.strptime('01/01/1965', self.format)
+            self._start = datetime.strptime('03/30/1994', self.format)
         if end:
             self._end = datetime.strptime(end, self.format)
         else:
-            self._end = datetime.strptime('01/02/1965', self.format)
+            self._end = datetime.strptime('03/31/1994', self.format)
         self.Date = namedtuple('Date', ['start', 'end'])
         self.begin = self.Date(self._start.strftime(self.format),
                           self._end.strftime(self.format))
@@ -171,7 +171,7 @@ class Spider():
                 d = {}
                 td1 = tr.xpath("./td[position()=1]")[0]
                 d['href'] = td1.xpath(".//a/@href")[0]
-                d['header'] = html.tostring(tr)
+                d['header'] = html.tostring(tr).decode()
                 items.append(d)
             return items, next_link
         url_first_part = 'https://searchicris.co.weld.co.us/recorder'
