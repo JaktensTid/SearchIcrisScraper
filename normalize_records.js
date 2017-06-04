@@ -5,24 +5,17 @@ var fs = require('fs');
 var obj = JSON.parse(fs.readFileSync('credentials.json', 'utf8'));
 var url = 'mongodb:\/\/' + obj['user'] + ':' + obj['password'] + '@' +
 	obj['host'] + ':' + obj['port'] + '/' + obj['db'];
-console.log(url);
 var counter = 0;
 MongoClient.connect(url, function(err, db) {
-  var main = db.db('main');
-  var collection = main.collection('records');
-  collection.find({}, function(err, docs){docs.each(function(err, mongodb_record) {
+var main = db.db('main');
+  var col = main.collection('records');
+  col.find().each(function(err, mongodb_record) {
       let _id = mongodb_record['_id'];
-      console.log(mongodb_record['href']);
       let record = fill(mongodb_record);
-      console.log(record);
-      return;
       collection.update({'_id' : _id}, {'$set' : record});
       counter++;
-      if(counter % 10000 == 0) {console.log('Parsed ' + counter);}
-    });
-  });
-  db.close();
-  main.close();
+      if(counter % 1000 == 0) {console.log('Parsed ' + counter);}
+   });
 });
 
 var $ = require('jquery')(new JSDOM("<html><body><h1>Initializing jquery</h1></body></html>").window);
@@ -36,9 +29,11 @@ function fill(mongodb_record)
     let dom2 = new JSDOM('<table>' + outer.replace('\\', '') + '</table>');
     ScrapePage(dom2.window.document, record);
     ScrapeRecord(dom1.window.document, record);
-    console.log(record);
     for(let key in record)
-    { record[key].replaceAll('\n', ''); $.trim(record[key]); }
+    { 
+      record[key].replaceAll('\n', '');
+      $.trim(record[key]);
+    }
     return record;
 }
 
@@ -52,7 +47,6 @@ function normalize(str, regxp, s1 = '', s2 = '') {
 
 function ScrapeRecord(doc, record) {
     var fieldset = doc.getElementsByTagName('fieldset')[0];
-    console.log($(fieldset).text());
     var fsText = fieldset.textContent.replace(/(\r\n|\n|\r)/gm, "").trim();
     // Find value between two strings and append it to result
     var fillRecord = function(attr, s1, s2) {
