@@ -12,6 +12,7 @@ var main = db.db('main');
   col.find().each(function(err, mongodb_record) {
       let _id = mongodb_record['_id'];
       let record = fill(mongodb_record);
+      console.log(record);
       collection.update({'_id' : _id}, {'$set' : record});
       counter++;
       if(counter % 1000 == 0) {console.log('Parsed ' + counter);}
@@ -29,10 +30,10 @@ function fill(mongodb_record)
     let dom2 = new JSDOM('<table>' + outer.replace('\\', '') + '</table>');
     ScrapePage(dom2.window.document, record);
     ScrapeRecord(dom1.window.document, record);
+    
     for(let key in record)
     { 
-      record[key].replaceAll('\n', '');
-      $.trim(record[key]);
+      record[key] = $.trim(record[key]);
     }
     return record;
 }
@@ -174,7 +175,7 @@ function ScrapePage(doc, record) {
         }
     };
 
-    record.name = normalize('^.*');
+    record['name'] = normalize('^.*');
     record['RECORDED DATE']= normalize(text, 'Rec\. Date:.*?Book Page', 'Rec. Date:', 'Book Page');
     let bookPage = normalize(text, 'Book Page:.*Related', 'Book Page:', 'Related');
     let book = normalize(bookPage, 'B:.*P:', 'B:', 'P:');
@@ -185,7 +186,7 @@ function ScrapePage(doc, record) {
     record['relBookPage'] = normalize(text, 'Rel Book Page:.*?Grantor', 'Rel Book Page:', 'Grantor');
     //record.grantor = normalize(text, 'Grantor:.*?Grantee', 'Grantor:', 'Grantee');
     //record.grantee = normalize(text, 'Grantee:.*', 'Grantee:');
-    record.numPages = normalize(text, 'Num Pages:.*', 'Num Pages:');
+    record['numPages'] = normalize(text, 'Num Pages:.*', 'Num Pages:');
     normalizeOther();
 }
 
