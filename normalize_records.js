@@ -5,18 +5,14 @@ var fs = require('fs');
 var obj = JSON.parse(fs.readFileSync('credentials.json', 'utf8'));
 var url = 'mongodb:\/\/' + obj['user'] + ':' + obj['password'] + '@' +
 	obj['host'] + ':' + obj['port'] + '/' + obj['db'];
-var counter = 0;
 MongoClient.connect(url, function(err, db) {
 var main = db.db('main');
   var col = main.collection('records');
   col.find().each(function(err, mongodb_record) {
       let _id = mongodb_record['_id'];
       let record = fill(mongodb_record);
-      console.log(record);
-      collection.update({'_id' : _id}, {'$set' : record});
-      counter++;
-      if(counter % 1000 == 0) {console.log('Parsed ' + counter);}
-   });
+      col.update({'_id' : _id}, {'$set' : record});
+     });
 });
 
 var $ = require('jquery')(new JSDOM("<html><body><h1>Initializing jquery</h1></body></html>").window);
@@ -32,14 +28,14 @@ function fill(mongodb_record)
     ScrapeRecord(dom1.window.document, record);
     
     for(let key in record)
-    { 
+    {
       record[key] = $.trim(record[key]);
     }
     return record;
 }
 
 function normalize(str, regxp, s1 = '', s2 = '') {
-    var matches = str.match(regxp);
+    let matches = str.match(regxp);
     if (matches !== null)
         return str.match(regxp)[0].replace(s1, '').replace(s2, '').trim();
     else
@@ -47,12 +43,12 @@ function normalize(str, regxp, s1 = '', s2 = '') {
 };
 
 function ScrapeRecord(doc, record) {
-    var fieldset = doc.getElementsByTagName('fieldset')[0];
-    var fsText = fieldset.textContent.replace(/(\r\n|\n|\r)/gm, "").trim();
+    let fieldset = doc.getElementsByTagName('fieldset')[0];
+    let fsText = fieldset.textContent.replace(/(\r\n|\n|\r)/gm, "").trim();
     // Find value between two strings and append it to result
-    var fillRecord = function(attr, s1, s2) {
+    let fillRecord = function(attr, s1, s2) {
         try {
-            var matches = fsText.match('(' + s1 + ')(.*)(' + s2 + ')');
+            let matches = fsText.match('(' + s1 + ')(.*)(' + s2 + ')');
             record[attr] = matches[2].trim();
         } catch (TypeError) {
             record[attr] = '';
@@ -65,7 +61,7 @@ function ScrapeRecord(doc, record) {
     fillRecord('GRANTEE CITY', 'City', 'State');
     fillRecord('GRANTEE STATE', 'State', 'Zip');
     fillRecord('GRANTEE ZIP', 'Zip', 'Mailback Date');
-    var notesFieldset = $(doc).find('fieldset:contains("Notes")');
+    let notesFieldset = $(doc).find('fieldset:contains("Notes")');
     const regex = /((SE4|SW4|NE4|NW4|NE|NW|SE|SW|N2|S2|W2|E2|N\/2|S\/2|W\/2|E\/2|NE\/4|NW\/4|SE\/4|SW\/4){1,5})($| |,|\n)/g;
     record['SPECIFICATIONS'] = notesFieldset.text().replace("Notes", '');
     record['SEC'] = '';
@@ -76,7 +72,7 @@ function ScrapeRecord(doc, record) {
     record['GRANTEE'] = '';
     
     // Extracting sec twp range and subdiv (LEGAL) from Notes
-    var fillFromMatches = function(matches) {
+    let fillFromMatches = function(matches) {
         let str = matches[0];
         record['RNG'] = str.match(/R[0-9]{1,2}/g)[0].replace(',', '');
         record['TWP'] = str.match(/T[0-9]{1,2}/g)[0].replace(',', '');
@@ -97,13 +93,13 @@ function ScrapeRecord(doc, record) {
         }
     }
     
-    var tables = $(doc).find('table[width="100%"]');
-    for (var i = 0; i < tables.length; i++) {
-        var trHeader = '';
-        var rows = $(tables[i]).find('> tbody > tr');
+    let tables = $(doc).find('table[width="100%"]');
+    for (let i = 0; i < tables.length; i++) {
+        let trHeader = '';
+        let rows = $(tables[i]).find('> tbody > tr');
         //SCRAPING LEGAL DATA
         if (i === tables.length - 1) {
-            var legalData = tables[i].textContent.replace('Â', ', ');
+            let legalData = tables[i].textContent.replace('Â', ', ');
             let m;
             let matchesSubdiv = legalData.trim().match(regex);
             if(matchesSubdiv !== null)
@@ -111,9 +107,9 @@ function ScrapeRecord(doc, record) {
                 record['LEGAL'] += record['LEGAL'] !== '' ? ', ' + matchesSubdiv.join(', ') : matchesSubdiv.join(', ');
             }
 
-            var sec = normalize(legalData, 'Section: .*? ', 'Section: ', '');
-            var twp = normalize(legalData, 'Township: .*? ', 'Township: ', '');
-            var rng = normalize(legalData, 'Range: .*? ', 'Range: ', '');
+            let sec = normalize(legalData, 'Section: .*? ', 'Section: ', '');
+            let twp = normalize(legalData, 'Township: .*? ', 'Township: ', '');
+            let rng = normalize(legalData, 'Range: .*? ', 'Range: ', '');
             record['Legal data'] = legalData;
             if(sec !== '')
             record['SEC'] += record['SEC'] === '' ? sec : ', '+ sec;
@@ -126,15 +122,15 @@ function ScrapeRecord(doc, record) {
         let grantors = [];
         let grantees = [];
 
-        for (var j = 1; j < rows.length; j++) {
+        for (let j = 1; j < rows.length; j++) {
             if (i === 0) {
-                var grantor = rows[j].textContent;
+                let grantor = rows[j].textContent;
                 if (grantor !== undefined){
                     grantors.push(grantor.trim());
                 }
             }
             if (i === 1) {
-                var grantee = rows[j].textContent;
+                let grantee = rows[j].textContent;
                 if (grantee !== undefined){
                     grantees.push(grantee.trim());
                 }
@@ -152,22 +148,22 @@ function ScrapeRecord(doc, record) {
 
 function ScrapePage(doc, record) {
     let tr = $(doc).find('tr')[0];
-    var desc = $(tr).find(' > td').first().text().split('\n');
+    let desc = $(tr).find(' > td').first().text().split('\n');
     record['INSTRUMENT TYPE'] = desc[0];
     record['RECEPTION NO'] = desc[1];
-    var text = $(tr).text();
+    let text = $(tr).text();
 
-    var normalizeOther = function() {
+    let normalizeOther = function() {
         record['Legal data'] = '';
-        var trs = $(tr).find('table[width="100%"] > tbody > tr');
-        for (var i = 0; i < trs.length; i++) {
-            var tds = $(trs[i]).find(' > td');
-            for (var j = 0; j < tds.length; j++) {
-                var regxp = '<b>.*?<\/b>';
+        let trs = $(tr).find('table[width="100%"] > tbody > tr');
+        for (let i = 0; i < trs.length; i++) {
+            let tds = $(trs[i]).find(' > td');
+            for (let j = 0; j < tds.length; j++) {
+                let regxp = '<b>.*?<\/b>';
                 if (tds[j].innerHTML.match(regxp) !== null) {
-                    var header = normalize(tds[j].innerHTML, regxp, '<b>', '</b>').replace(':', '').trim();
+                    let header = normalize(tds[j].innerHTML, regxp, '<b>', '</b>').replace(':', '').trim();
                     if(header.toLowerCase().indexOf('grantor') === -1 & header.toLowerCase().indexOf('grantee') === -1){
-                    var value = tds[j].innerHTML.replace(tds[j].innerHTML.match(regxp)[0], '').replace('\n', ',');
+                    let value = tds[j].innerHTML.replace(tds[j].innerHTML.match(regxp)[0], '').replace('\n', ',');
                     record[header] = value;
                     }
                 }
