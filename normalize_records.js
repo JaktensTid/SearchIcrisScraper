@@ -3,8 +3,9 @@ const { JSDOM } = jsdom;
 var MongoClient = require('mongodb').MongoClient;
 var fs = require('fs');
 var obj = JSON.parse(fs.readFileSync('credentials.json', 'utf8'));
-var url = 'mongodb:\/\/' + obj['user'] + ':' + obj['password'] + '@' +
-	obj['host'] + ':' + obj['port'] + '/' + obj['db'];
+//var url = 'mongodb:\/\/' + obj['user'] + ':' + obj['password'] + '@' +
+//	obj['host'] + ':' + obj['port'] + '/' + obj['db'];
+var url = process.env.MONGODB_URI;
 MongoClient.connect(url, function(err, db) {
 var main = db.db('main');
   var col = main.collection('records');
