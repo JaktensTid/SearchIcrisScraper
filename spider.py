@@ -45,11 +45,11 @@ class Collector:
     def insert_many(self, items):
         self.collection.insert_many(items)
 
-    def get_unscraped_records_data(self, skip):
-        return self.collection.find({"data" : {"$exists" : False}}).limit(skip)
+    def get_unscraped_records_data(self, limit=0):
+        return self.collection.find({"data" : {"$exists" : False}}).limit(limit)
 
-    def get_unscraped_records_headers(self, skip):
-        return self.collection.find({"header": {"$exists": False}}).limit(skip)
+    def get_unscraped_records_headers(self, limit=0):
+        return self.collection.find({"header": {"$exists": False}}).limit(limit)
 
     def update_one(self, doc, data):
         self.collection.update_one({'_id' : doc['_id']}, {'$set' : {'data' : data}})
@@ -63,14 +63,8 @@ class Dates:
         self.format = '%m/%d/%Y'
         self._today = datetime.now()
         self.next = 0
-        if start:
-            self._start = datetime.strptime(start, self.format)
-        else:
-            self._start = datetime.strptime('03/30/1994', self.format)
-        if end:
-            self._end = datetime.strptime(end, self.format)
-        else:
-            self._end = datetime.strptime('03/31/1994', self.format)
+        self._end = datetime.now() - timedelta(days=8)
+        self._start = datetime.now() - timedelta(days=7)
         self.Date = namedtuple('Date', ['start', 'end'])
         self.begin = self.Date(self._start.strftime(self.format),
                           self._end.strftime(self.format))
@@ -226,18 +220,14 @@ class Spider():
 
 
 if __name__ == '__main__':
-    dates = None
-    app_code = 1
-    if len(sys.argv) == 3:
-        dates = Dates(sys.argv[1], sys.argv[2])
-    if len(sys.argv) == 2:
-        app_code = int(sys.argv[1])
-    else:
-        dates = Dates()
+    dates = Dates()
     spider = Spider(dates)
     collector = Collector()
+
     for links in spider.crawl_search_pages():
         for link in links:
             collector.update_by_href(**link)
+
+    spider.run(collector.get_unscraped_records_data(), collector)
     print('Finished')
 

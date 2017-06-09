@@ -1,25 +1,48 @@
+//var sys = require('sys')
+//var exec = require('child_process').exec;
 var jsdom = require("jsdom");
 const { JSDOM } = jsdom;
 var MongoClient = require('mongodb').MongoClient;
 var fs = require('fs');
 var obj = JSON.parse(fs.readFileSync('credentials.json', 'utf8'));
 var url = 'mongodb:\/\/' + obj['user'] + ':' + obj['password'] + '@' +
-	obj['host'] + ':' + obj['port'] + '/' + obj['db'] 
+	obj['host'] + ':' + obj['port'] + '/' + obj['db'];
+var counter = 0;
 MongoClient.connect(url, function(err, db) {
-  var collection = db.collection('records');
-  
-  db.close();
+var main = db.db('main');
+  var col = main.collection('records');
+  col.find({'RECEPTION NO' : {'$exists' : false}}).each(function(err, mongodb_record) {
+      if('header' in mongodb_record) {
+          let _id = mongodb_record['_id'];
+          let record = fill(mongodb_record);
+          col.update({'_id': _id}, {'$set': record});
+          counter++;
+          if (counter % 100 == 0) {
+              console.log('Parsed ' + counter);
+              //exec("echo 1 > /proc/sys/vm/drop_caches ; echo 2 > /proc/sys/vm/drop_caches ; echo 3 > /proc/sys/vm/drop_caches ; sync");
+          }
+      }
+   });
 });
 
-let inner = "<div id=\"presentation\" class=\"iDoc\">\n\t\t   \t\t\t\n   \n<fieldset class=\"\" border=\"1px\"><legend style=\"font-weight:bold;\">General Data</legend>\n\n      \n      <table class=\"tableHtmlLayout\"><tbody>\n<tr valign=\"top\">\n<td>\n\n         \n         <table class=\"tableHtmlLayout\"><tbody>\n<tr valign=\"top\">\n<td colspan=\"1\">\n\n            \n            <span class=\"fieldLabel\" style=\"text-align:left;\">Document Number</span><br><span class=\"field\" style=\"text-align:left;\"><span class=\"text\">1452927&#160;</span></span>\n<br>            \n</td>\n</tr>\n<tr valign=\"top\"><td colspan=\"1\">\n\n            \n            <table class=\"tableHtmlLayout\"><tbody>\n<tr valign=\"top\">\n<td>\n<span class=\"fieldLabel\" style=\"text-align:left;\">Recording Date</span><br><span class=\"field\" style=\"text-align:left;\"><span>01/04/1965 12:00:00 AM&#160;</span></span>\n</td>\n<td colspan=\"1\">\n<span class=\"fieldLabel\" style=\"text-align:left;\">Number Pages</span><br><span class=\"field\" style=\"text-align:left;\"><span class=\"text\">&#160;</span></span>\n</td>\n</tr>\n<tr valign=\"top\"><td>\n<span class=\"fieldLabel\" style=\"text-align:left;\">Recording Fee</span><br><span class=\"field\" style=\"text-align:left;\"><span class=\"text\">&#160;</span></span>\n</td>\n<td colspan=\"1\">\n<span class=\"fieldLabel\" style=\"text-align:left;\">Documentary Fee</span><br><span class=\"field\" style=\"text-align:left;\"><span class=\"text\">&#160;</span></span>\n</td>\n</tr>\n<tr valign=\"top\"><td>\n<span class=\"fieldLabel\" style=\"text-align:left;\">Total Fee</span><br><span class=\"field\" style=\"text-align:left;\"><span class=\"text\">&#160;</span></span>\n</td>\n<td colspan=\"1\">\n</td>\n</tr>\n</tbody></table>\n            \n</td>\n</tr>\n</tbody></table>\n         \n</td>\n<td colspan=\"1\">\n\n         \n         <table class=\"tableHtmlLayout\"><tbody>\n<tr valign=\"top\">\n<td colspan=\"1\">\n<fieldset class=\"\" border=\"1px\"><legend style=\"font-weight:bold;\">Return Address</legend>\n\n            \n            <span class=\"fieldLabel\" style=\"text-align:left;\"></span><span class=\"field\" style=\"text-align:left;\"><span class=\"text\">&#160;</span></span>\n<br>            <span class=\"fieldLabel\" style=\"text-align:left;\"></span><span class=\"field\" style=\"text-align:left;\"><table class=\"tableHtmlLayout\"><tbody>\n<tr valign=\"top\">\n<td colspan=\"4\">\n<span class=\"fieldLabel\" style=\"text-align:left;\">Address1</span><br><span class=\"field\" style=\"text-align:left;\"><span class=\"text\">&#160;</span></span>\n</td>\n</tr>\n<tr valign=\"top\"><td colspan=\"4\">\n<span class=\"fieldLabel\" style=\"text-align:left;\">Address2</span><br><span class=\"field\" style=\"text-align:left;\"><span class=\"text\">&#160;</span></span>\n</td>\n</tr>\n<tr valign=\"top\"><td>\n<span class=\"fieldLabel\" style=\"text-align:left;\">City</span><br><span class=\"field\" style=\"text-align:left;\"><span class=\"text\">&#160;</span></span>\n</td>\n<td>\n<span class=\"fieldLabel\" style=\"text-align:left;\">State</span><br><span class=\"field\" style=\"text-align:left;\"><span class=\"text\">&#160;</span></span>\n</td>\n<td>\n<span class=\"fieldLabel\" style=\"text-align:left;\">Zip</span><br><span class=\"field\" style=\"text-align:left;\"><span class=\"text\">&#160;</span></span>\n</td>\n<td colspan=\"1\">\n</td>\n</tr>\n</tbody></table>\n</span>\n<br>            <span class=\"fieldLabel\" style=\"text-align:left;\">Mailback Date</span><br><span class=\"field\" style=\"text-align:left;\"><span>&#160;</span></span>\n<br>            \n</fieldset></td>\n</tr>\n</tbody></table>\n         \n</td>\n</tr>\n</tbody></table>\n      \n</fieldset><fieldset class=\"\" border=\"1px\"><legend style=\"font-weight:bold;\">Names</legend>\n\n      \n      <table class=\"tableHtmlLayout\"><tbody>\n<tr valign=\"top\">\n<td>\n\n         \n         <table width=\"100%\"><tr valign=\"top\">\n         <th>SELLER</th>\n         </tr><tr valign=\"top\">\n         <td valign=\"top\"><span class=\"text\">CONTINENTAL ENTERPRISES DENVER INC&#160;</span></td></tr></table></td>\n<td colspan=\"1\">\n\n         \n         <table width=\"100%\"><tr valign=\"top\">\n         <th>BUYER</th>\n         </tr><tr valign=\"top\">\n         <td valign=\"top\"><span class=\"text\">EDWARD HILDA S&#160;</span></td></tr></table></td>\n</tr>\n</tbody></table>\n      \n</fieldset><fieldset class=\"\" border=\"1px\"><legend style=\"font-weight:bold;\">Related</legend>\n\n      \n      <table class=\"tableHtmlLayout\"><tbody>\n<tr valign=\"top\">\n<td colspan=\"1\">\n\n         \n         <table width=\"100%\"><tr valign=\"top\">\n         <th>Document Number</th>\n         </tr><tr valign=\"top\">\n         <td valign=\"top\"><span class=\"text\">&#160;</span></td></tr></table></td>\n</tr>\n</tbody></table>\n      \n</fieldset><fieldset class=\"\" border=\"1px\"><legend style=\"font-weight:bold;\">Notes</legend>\n\n      \n      <span class=\"fieldLabel\" style=\"text-align:left;\"></span><span class=\"field\" style=\"text-align:left;\"><span class=\"text\">&#160;</span></span>\n<br>      \n</fieldset><h3>Legal Data</h3>\n\n      \n      <table width=\"100%\"><tr valign=\"top\">\n      <th></th>\n      </tr><tr valign=\"top\">\n      <td valign=\"top\"><span class=\"text\">&#160;</span></td></tr></table>   \n<script type=\"text/javascript\">window.onload = function () {}</script>\n\t\t   \t\t</div>\n\t\t   \t\n\t   \t\n\t   \t\n\t    \n\t\n\t\t\t\t"
-let outer = "<tr class=\"even\">\n<td><strong><a href=\"../eagleweb/viewDoc.jsp?node=DOCCUSI1-1452927\">INSTALLMENT CONTRACT<br>\n1452927</a></strong></td>\n<td><a href=\"../eagleweb/viewDoc.jsp?node=DOCCUSI1-1452927\"><b> Rec. Date: </b>01/04/1965 12:00:00 AM <b>Book Page: </b> <b> Related: </b> <b>Rel Book Page: </b><b> <table cellspacing=\"0\" width=\"100%\"><tr><td width=\"50%\" valign=\"top\"><b>Grantor:</b> CONTINENTAL ENTERPRISES DENVER INC</td><td width=\"50%\" valign=\"top\">&#160;</td></tr><tr><td valign=\"top\"><b>Grantee:</b> EDWARD HILDA S</td><td valign=\"top\"> <remarks>&#160;</remarks></td></tr></table>\nNum Pages: </b></a></td>\n<td></td>\n<td></td></tr>\n"
-let dom1 = new JSDOM(inner.replace('\\', ''));
-let dom2 = new JSDOM(outer.replace('\\', ''));
-let record = {};
-var $ = require('jquery')(dom2.window)
-//ScrapeRecord(dom1.window.document, record);
-ScrapePage(dom2.window.document.getElementsByClassName('even')[0], record);
-console.log(record);
+var $ = require('jquery')(new JSDOM("<html><body><h1>Initializing jquery</h1></body></html>").window);
+
+function fill(mongodb_record)
+{
+    let record = {};
+    let inner = mongodb_record['data']['data'];
+    let outer = mongodb_record['header'];
+    let dom1 = new JSDOM(inner.replace('\\', ''));
+    let dom2 = new JSDOM('<table>' + outer.replace('\\', '') + '</table>');
+    ScrapePage(dom2.window.document, record);
+    ScrapeRecord(dom1.window.document, record);
+
+    for(let key in record)
+    {
+      record[key] = $.trim(record[key]);
+    }
+    return record;
+}
 
 function normalize(str, regxp, s1 = '', s2 = '') {
     var matches = str.match(regxp);
@@ -30,7 +53,6 @@ function normalize(str, regxp, s1 = '', s2 = '') {
 };
 
 function ScrapeRecord(doc, record) {
-    debugger;
     var fieldset = doc.getElementsByTagName('fieldset')[0];
     var fsText = fieldset.textContent.replace(/(\r\n|\n|\r)/gm, "").trim();
     // Find value between two strings and append it to result
@@ -58,7 +80,7 @@ function ScrapeRecord(doc, record) {
     record['LEGAL'] = '';
     record['GRANTOR'] = '';
     record['GRANTEE'] = '';
-    
+
     // Extracting sec twp range and subdiv (LEGAL) from Notes
     var fillFromMatches = function(matches) {
         let str = matches[0];
@@ -80,7 +102,7 @@ function ScrapeRecord(doc, record) {
             fillFromMatches(matches);
         }
     }
-    
+
     var tables = $(doc).find('table[width="100%"]');
     for (var i = 0; i < tables.length; i++) {
         var trHeader = '';
@@ -106,7 +128,7 @@ function ScrapeRecord(doc, record) {
         if(rng !== '')
             record['RNG'] += record['RNG'] === '' ? rng : ', ' + rng;
         }
- 		
+
         let grantors = [];
         let grantees = [];
 
@@ -134,8 +156,8 @@ function ScrapeRecord(doc, record) {
     record['RNG'] = record['RNG'].replace('R', '');
 }
 
-function ScrapePage(tr, record) {
-    record.href = $(tr).find('a').attr('href');
+function ScrapePage(doc, record) {
+    let tr = $(doc).find('tr')[0];
     var desc = $(tr).find(' > td').first().text().split('\n');
     record['INSTRUMENT TYPE'] = desc[0];
     record['RECEPTION NO'] = desc[1];
@@ -159,7 +181,7 @@ function ScrapePage(tr, record) {
         }
     };
 
-    record.name = normalize('^.*');
+    record['name'] = normalize('^.*');
     record['RECORDED DATE']= normalize(text, 'Rec\. Date:.*?Book Page', 'Rec. Date:', 'Book Page');
     let bookPage = normalize(text, 'Book Page:.*Related', 'Book Page:', 'Related');
     let book = normalize(bookPage, 'B:.*P:', 'B:', 'P:');
@@ -170,7 +192,10 @@ function ScrapePage(tr, record) {
     record['relBookPage'] = normalize(text, 'Rel Book Page:.*?Grantor', 'Rel Book Page:', 'Grantor');
     //record.grantor = normalize(text, 'Grantor:.*?Grantee', 'Grantor:', 'Grantee');
     //record.grantee = normalize(text, 'Grantee:.*', 'Grantee:');
-    record.numPages = normalize(text, 'Num Pages:.*', 'Num Pages:');
+    record['numPages'] = normalize(text, 'Num Pages:.*', 'Num Pages:');
     normalizeOther();
 }
 
+String.prototype.replaceAll = function(search, replace){
+  return this.split(search).join(replace);
+}
