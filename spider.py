@@ -1,11 +1,9 @@
 import os
-import sys
 import requests
 import json
 import re
-import gc
-from datetime import datetime
-from lxml.html import tostring
+import asyncio
+from aiohttp import ClientSession
 from time import sleep, time
 from datetime import datetime,timedelta
 from collections import namedtuple
@@ -42,20 +40,14 @@ class Collector:
     def insert_one(self, d):
         self.collection.insert_one(d)
 
-    def insert_many(self, items):
-        self.collection.insert_many(items)
-
     def get_unscraped_records_data(self, limit=0):
         return self.collection.find({"data" : {"$exists" : False}}).limit(limit)
 
-    def get_unscraped_records_headers(self, limit=0):
-        return self.collection.find({"header": {"$exists": False}}).limit(limit)
+    def get_records_without_pdf(self):
+        return self.collection.find({"pdf_url" : {'$exists' : False}})
 
     def update_one(self, doc, data):
         self.collection.update_one({'_id' : doc['_id']}, {'$set' : {'data' : data}})
-
-    def update_by_href(self, href, header):
-        self.collection.update_one({'href': href}, {'$set': {'header': header}})
 
 
 class Dates:
@@ -90,6 +82,7 @@ class Spider():
     def __init__(self, dates):
         self.dates = dates
         self.refresh_cookie()
+        self.mongodb = Collector()
 
     def refresh_cookie(self):
         wd.get(main_page)
@@ -147,7 +140,7 @@ class Spider():
 
     def crawl_search_pages(self):
         def collect_links(url):
-            '''Returns links + next page link'''
+            '''Returns items + next page link'''
             response = requests.get(url, cookies=self.cookies)
             if 'You must be logged in to access the requested page' in response.text:
                 self.refresh_cookie()
@@ -171,18 +164,19 @@ class Spider():
         url_first_part = 'https://searchicris.co.weld.co.us/recorder'
         for date in self.dates:
             #Scraping the first page
-            links = []
+            items = []
             created_url = self.make_POST(date)
             url = url_first_part + created_url[2:]
             collected_links, next_page = collect_links(url)
-            if collected_links: links += collected_links
+            if collected_links: items += collected_links
             while next_page:
                 collected_links, next_page = collect_links(url_first_part.replace('recorder','') + next_page)
-                if collected_links: links += collected_links
-            print("Scraped " + str(len(links)) + " from " + date.start + " - " + date.end)
-            yield links
+                if collected_links: items += collected_links
+            print("Scraped " + str(len(items)) + " from " + date.start + " - " + date.end)
+            yield items
+            map(lambda item: self.mongodb.update_one(**item), items)
 
-    def run(self, unscraped, collector):
+    def crawl_records(self):
         base_url = 'https://searchicris.co.weld.co.us/recorder'
         def go(record):
             global number_of_scraped
@@ -206,9 +200,9 @@ class Spider():
             if data:
                 total_count += 1
                 print('Scraped ' + record['id'].strip() + ' Total: ' + str(total_count) + ' Time: ' + str(datetime.now()))
-                collector.update_one(record, data)
+                self.mongodb.update_one(record, data)
 
-        for record in unscraped:
+        for record in self.mongodb.get_unscraped_records_data():
             for i in range(0,3):
                 try:
                     go(record)
@@ -216,18 +210,54 @@ class Spider():
                 except NoSuchElementException:
                     pass
                 except TimeoutException:
-                    pass 
+                    pass
+
+    async def _fetch_pdf(self, url, session):
+        async with session.get(url) as response:
+            delay = response.headers.get("DELAY")
+            date = response.headers.get("DATE")
+            print("{}:{} with delay {}".format(date, response.url, delay))
+            return await response.read()
+
+    async def _bound_fetch_pdf(self, sem, url, session):
+        async with sem:
+            await self._fetch_pdf(url, session)
+
+    async def run(self):
+        main_page_url = 'https://searchicris.co.weld.co.us/recorder/web/login.jsp'
+        credentials = json.load(open('credentials.json', 'r').read())
+        wd.get(main_page_url)
+        wd.find_element_by_id('userId').send_keys(credentials['user'])  # login
+        wd.find_element_by_name('password').send_keys(credentials['password'])  # password
+        wd.find_elements_by_name('submit')[1].click()
+        cookies = {cookie['name']: cookie['value']
+                    for cookie in wd.get_cookies()
+                    if '_ga' not in cookie['name']}
+        cookies = {'JSESSIONID': cookies['JSESSIONID'], 'f5_cspm': cookies['f5_cspm'],
+                            'pageSize': '100', 'sortDir': 'asc', 'sortField': 'Document+Relevance'}
+
+        tasks = []
+        sem = asyncio.Semaphore(20)
+
+        async with ClientSession(cookies=cookies) as session:
+            for record in self.mongodb.get_records_without_pdf():
+                if 'RECEPTION NO ' not in record: continue
+                if 'href' not in record: continue
+                reception = record['RECEPTION NO']
+                href = record['href'].split('=')[-1]
+                url = 'https://searchicris.co.weld.co.us/recorder/eagleweb/downloads/' + reception + '?id=' + href + '.A0&parent=' + href + '&preview=false&noredirect=true'
+                task = asyncio.ensure_future(self._bound_fetch_pdf(sem, url, session))
+                tasks.append(task)
+
+            responses = asyncio.gather(*tasks)
+            await responses
 
 
 if __name__ == '__main__':
     dates = Dates()
     spider = Spider(dates)
-    collector = Collector()
+    spider.crawl_search_pages()
 
-    for links in spider.crawl_search_pages():
-        for link in links:
-            collector.update_by_href(**link)
-
-    spider.run(collector.get_unscraped_records_data(), collector)
+    spider.crawl_records(collector.get_unscraped_records_data(), collector.update_one)
     print('Finished')
 
