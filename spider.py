@@ -212,52 +212,60 @@ class Spider():
                 except TimeoutException:
                     pass
 
-    async def _fetch_pdf(self, url, session):
+    async def _fetch_pdf(self, url, reception, second_part, session):
         async with session.get(url) as response:
-            delay = response.headers.get("DELAY")
-            date = response.headers.get("DATE")
-            print("{}:{} with delay {}".format(date, response.url, delay))
-            return await response.read()
+            content_type = response.headers['Content-Type']
+            if content_type == 'application/pdf' and response.status == 200:
+                content = await response.read()
+                amazon_response = requests.post(self.amazon_url, data={'filename': '%s-%s.pdf' % (reception, second_part)},
+                                                files={'file': content})
+                return amazon_response.status_code
 
-    async def _bound_fetch_pdf(self, sem, url, session):
+    async def _bound_fetch_pdf(self, sem, url, reception, second_part, session):
         async with sem:
-            await self._fetch_pdf(url, session)
+            await self._fetch_pdf(url, reception, second_part, session)
 
-    async def run(self):
-        main_page_url = 'https://searchicris.co.weld.co.us/recorder/web/login.jsp'
-        credentials = json.load(open('credentials.json', 'r').read())
-        wd.get(main_page_url)
-        wd.find_element_by_id('userId').send_keys(credentials['user'])  # login
-        wd.find_element_by_name('password').send_keys(credentials['password'])  # password
-        wd.find_elements_by_name('submit')[1].click()
-        cookies = {cookie['name']: cookie['value']
-                    for cookie in wd.get_cookies()
-                    if '_ga' not in cookie['name']}
-        cookies = {'JSESSIONID': cookies['JSESSIONID'], 'f5_cspm': cookies['f5_cspm'],
-                            'pageSize': '100', 'sortDir': 'asc', 'sortField': 'Document+Relevance'}
+    def upload_pdfs(self):
+        async def awaitable():
+            main_page_url = 'https://searchicris.co.weld.co.us/recorder/web/login.jsp'
+            credentials = json.load(open('credentials.json', 'r'))
+            self.amazon_url = credentials['amazon_url']
+            wd.get(main_page_url)
+            wd.find_element_by_id('userId').send_keys(credentials['user'])  # login
+            wd.find_element_by_name('password').send_keys(credentials['password'])  # password
+            wd.find_elements_by_name('submit')[1].click()
+            cookies = {cookie['name']: cookie['value']
+                       for cookie in wd.get_cookies()
+                       if '_ga' not in cookie['name']}
+            cookies = {'JSESSIONID': cookies['JSESSIONID'], 'f5_cspm': cookies['f5_cspm'],
+                       'pageSize': '100', 'sortDir': 'asc', 'sortField': 'Document+Relevance'}
 
-        tasks = []
-        sem = asyncio.Semaphore(20)
+            tasks = []
+            sem = asyncio.Semaphore(20)
 
-        async with ClientSession(cookies=cookies) as session:
-            for record in self.mongodb.get_records_without_pdf():
-                if 'RECEPTION NO ' not in record: continue
-                if 'href' not in record: continue
-                reception = record['RECEPTION NO']
-                href = record['href'].split('=')[-1]
-                url = 'https://searchicris.co.weld.co.us/recorder/eagleweb/downloads/' + reception + '?id=' + href + '.A0&parent=' + href + '&preview=false&noredirect=true'
-                task = asyncio.ensure_future(self._bound_fetch_pdf(sem, url, session))
-                tasks.append(task)
+            async with ClientSession(cookies=cookies) as session:
+                for record in self.mongodb.get_records_without_pdf():
+                    if 'RECEPTION NO ' not in record: continue
+                    if 'href' not in record: continue
+                    reception = record['RECEPTION NO']
+                    second_part = record['href'].split('=')[-1]
+                    url = 'https://searchicris.co.weld.co.us/recorder/eagleweb/downloads/' + reception + '?id=' + second_part + '.A0&parent=' + second_part + '&preview=false&noredirect=true'
+                    task = asyncio.ensure_future(self._bound_fetch_pdf(sem, url, reception, second_part, session))
+                    tasks.append(task)
 
-            responses = asyncio.gather(*tasks)
-            await responses
+                responses = asyncio.gather(*tasks)
+                await responses
+
+        loop = asyncio.get_event_loop()
+        future = asyncio.ensure_future(awaitable())
+        loop.run_until_complete(future)
 
 
 if __name__ == '__main__':
     dates = Dates()
     spider = Spider(dates)
-    spider.crawl_search_pages()
-
-    spider.crawl_records(collector.get_unscraped_records_data(), collector.update_one)
+    #spider.crawl_search_pages()
+    #spider.crawl_records()
+    spider.upload_pdfs()
     print('Finished')
 
