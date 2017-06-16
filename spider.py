@@ -34,7 +34,7 @@ class Collector:
                                          credentials['port'],
                                          credentials['db'])
         self.client = MongoClient(credentials)
-        self.db = self.client['main']
+        self.db = self.client['data']
         self.collection = self.db['records']
 
     def insert_one(self, d):
@@ -44,14 +44,17 @@ class Collector:
         return self.collection.find({"data" : {"$exists" : False}}).limit(limit)
 
     def get_records_without_pdf(self):
-        return self.collection.find({"pdf_url" : {'$exists' : False}})
+        return self.collection.find({"pdf_url" : {'$exists' : False}}, {'href' : 1, 'RECEPTION NO' : 1, '_id' : 0}).limit(100)
+
+    def update_pdf_url(self, href, url):
+        self.collection.update_one({'href' : href}, {'$set' : {'pdf_url' : url}})
 
     def update_one(self, doc, data):
         self.collection.update_one({'_id' : doc['_id']}, {'$set' : {'data' : data}})
 
 
 class Dates:
-    def __init__(self, start=None, end=None):
+    def __init__(self):
         self.format = '%m/%d/%Y'
         self._today = datetime.now()
         self.next = 0
@@ -219,6 +222,8 @@ class Spider():
                 content = await response.read()
                 amazon_response = requests.post(self.amazon_url, data={'filename': '%s-%s.pdf' % (reception, second_part)},
                                                 files={'file': content})
+                if amazon_response.status_code == 200:
+
                 return amazon_response.status_code
 
     async def _bound_fetch_pdf(self, sem, url, reception, second_part, session):
@@ -226,13 +231,13 @@ class Spider():
             await self._fetch_pdf(url, reception, second_part, session)
 
     def upload_pdfs(self):
+        main_page_url = 'https://searchicris.co.weld.co.us/recorder/web/login.jsp'
+        credentials = json.load(open('credentials.json', 'r'))
+        self.amazon_url = credentials['amazon_url']
         async def awaitable():
-            main_page_url = 'https://searchicris.co.weld.co.us/recorder/web/login.jsp'
-            credentials = json.load(open('credentials.json', 'r'))
-            self.amazon_url = credentials['amazon_url']
             wd.get(main_page_url)
-            wd.find_element_by_id('userId').send_keys(credentials['user'])  # login
-            wd.find_element_by_name('password').send_keys(credentials['password'])  # password
+            wd.find_element_by_id('userId').send_keys(credentials['icris_user'])  # login
+            wd.find_element_by_name('password').send_keys(credentials['icris_password'])  # password
             wd.find_elements_by_name('submit')[1].click()
             cookies = {cookie['name']: cookie['value']
                        for cookie in wd.get_cookies()
@@ -245,7 +250,7 @@ class Spider():
 
             async with ClientSession(cookies=cookies) as session:
                 for record in self.mongodb.get_records_without_pdf():
-                    if 'RECEPTION NO ' not in record: continue
+                    if 'RECEPTION NO' not in record: continue
                     if 'href' not in record: continue
                     reception = record['RECEPTION NO']
                     second_part = record['href'].split('=')[-1]
@@ -266,6 +271,7 @@ if __name__ == '__main__':
     spider = Spider(dates)
     #spider.crawl_search_pages()
     #spider.crawl_records()
+    total_count = 0
     spider.upload_pdfs()
     print('Finished')
 
