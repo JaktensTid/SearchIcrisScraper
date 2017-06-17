@@ -3,6 +3,7 @@ import requests
 import json
 import re
 import asyncio
+import aiohttp
 from aiohttp import ClientSession
 from time import sleep, time
 from datetime import datetime,timedelta
@@ -44,10 +45,10 @@ class Collector:
         return self.collection.find({"data" : {"$exists" : False}}).limit(limit)
 
     def get_records_without_pdf(self):
-        return self.collection.find({"pdf_url" : {'$exists' : False}}, {'href' : 1, 'RECEPTION NO' : 1, '_id' : 0}).limit(100)
+        return self.collection.find({"pdf_name" : {'$exists' : False}}, {'href' : 1, 'RECEPTION NO' : 1}).limit(100)
 
-    def update_pdf_url(self, href, url):
-        self.collection.update_one({'href' : href}, {'$set' : {'pdf_url' : url}})
+    def set_pdf_url(self, _id, pdf_name):
+        self.collection.update_one({'_id' : _id}, {'$set' : {'pdf_name' : pdf_name}})
 
     def update_one(self, doc, data):
         self.collection.update_one({'_id' : doc['_id']}, {'$set' : {'data' : data}})
@@ -215,20 +216,29 @@ class Spider():
                 except TimeoutException:
                     pass
 
-    async def _fetch_pdf(self, url, reception, second_part, session):
-        async with session.get(url) as response:
-            content_type = response.headers['Content-Type']
-            if content_type == 'application/pdf' and response.status == 200:
-                content = await response.read()
-                amazon_response = requests.post(self.amazon_url, data={'filename': '%s-%s.pdf' % (reception, second_part)},
-                                                files={'file': content})
-                if amazon_response.status_code == 200:
+    async def _fetch_pdf(self, _id, url, reception, second_part, session):
+        global total_count
+        try:
+            async with session.get(url) as response:
+                content_type = response.headers['Content-Type']
+                if content_type == 'application/pdf' and response.status == 200:
+                    content = await response.read()
+                    amazon_response = requests.post(self.amazon_url,
+                                                    data={'filename': '%s-%s.pdf' % (reception, second_part)},
+                                                    files={'file': content})
+                    if amazon_response.status_code == 200:
+                        self.mongodb.set_pdf_url(_id, '%s-%s.pdf' % (reception, second_part))
+                        total_count+=1
+                        print('Total scraped pdfs: ' + str(total_count))
+                    return amazon_response.status_code
+        except asyncio.TimeoutError:
+            pass
+        except aiohttp.client_exceptions.ClientConnectorError:
+            return self._fetch_pdf(self, _id, url, reception, second_part, session)
 
-                return amazon_response.status_code
-
-    async def _bound_fetch_pdf(self, sem, url, reception, second_part, session):
+    async def _bound_fetch_pdf(self, _id, sem, url, reception, second_part, session):
         async with sem:
-            await self._fetch_pdf(url, reception, second_part, session)
+            await self._fetch_pdf(_id, url, reception, second_part, session)
 
     def upload_pdfs(self):
         main_page_url = 'https://searchicris.co.weld.co.us/recorder/web/login.jsp'
@@ -252,10 +262,11 @@ class Spider():
                 for record in self.mongodb.get_records_without_pdf():
                     if 'RECEPTION NO' not in record: continue
                     if 'href' not in record: continue
+                    _id = record['_id']
                     reception = record['RECEPTION NO']
                     second_part = record['href'].split('=')[-1]
                     url = 'https://searchicris.co.weld.co.us/recorder/eagleweb/downloads/' + reception + '?id=' + second_part + '.A0&parent=' + second_part + '&preview=false&noredirect=true'
-                    task = asyncio.ensure_future(self._bound_fetch_pdf(sem, url, reception, second_part, session))
+                    task = asyncio.ensure_future(self._bound_fetch_pdf(_id, sem, url, reception, second_part, session))
                     tasks.append(task)
 
                 responses = asyncio.gather(*tasks)
