@@ -4,6 +4,7 @@ import json
 import re
 import asyncio
 import aiohttp
+from multiprocessing.dummy import Pool as ThreadPool
 from aiohttp import ClientSession
 from time import sleep, time
 from datetime import datetime,timedelta
@@ -45,7 +46,9 @@ class Collector:
         return self.collection.find({"data" : {"$exists" : False}}).limit(limit)
 
     def get_records_without_pdf(self):
-        return self.collection.find({"pdf_name" : {'$exists' : False}}, {'href' : 1, 'RECEPTION NO' : 1}).limit(100)
+        #return self.collection.find({"pdf_name" : {'$exists' : False}}, {'href' : 1, 'RECEPTION NO' : 1}).limit(100)
+        receptions = [line for line in open('reception_numbers.txt').read().split(',')]
+        return self.collection.find({'RECEPTION NO' : {'$in' : receptions}, 'pdf_name' : {'$exists' : False}})
 
     def set_pdf_url(self, _id, pdf_name):
         self.collection.update_one({'_id' : _id}, {'$set' : {'pdf_name' : pdf_name}})
@@ -216,65 +219,42 @@ class Spider():
                 except TimeoutException:
                     pass
 
-    async def _fetch_pdf(self, _id, url, reception, second_part, session):
-        global total_count
-        try:
-            async with session.get(url) as response:
-                content_type = response.headers['Content-Type']
-                if content_type == 'application/pdf' and response.status == 200:
-                    content = await response.read()
-                    amazon_response = requests.post(self.amazon_url,
-                                                    data={'filename': '%s-%s.pdf' % (reception, second_part)},
-                                                    files={'file': content})
-                    if amazon_response.status_code == 200:
-                        self.mongodb.set_pdf_url(_id, '%s-%s.pdf' % (reception, second_part))
-                        total_count+=1
-                        print('Total scraped pdfs: ' + str(total_count))
-                    return amazon_response.status_code
-        except asyncio.TimeoutError:
-            pass
-        except aiohttp.client_exceptions.ClientConnectorError:
-            return self._fetch_pdf(self, _id, url, reception, second_part, session)
-
-    async def _bound_fetch_pdf(self, _id, sem, url, reception, second_part, session):
-        async with sem:
-            await self._fetch_pdf(_id, url, reception, second_part, session)
-
     def upload_pdfs(self):
         main_page_url = 'https://searchicris.co.weld.co.us/recorder/web/login.jsp'
         credentials = json.load(open('credentials.json', 'r'))
         self.amazon_url = credentials['amazon_url']
-        async def awaitable():
-            wd.get(main_page_url)
-            wd.find_element_by_id('userId').send_keys(credentials['icris_user'])  # login
-            wd.find_element_by_name('password').send_keys(credentials['icris_password'])  # password
-            wd.find_elements_by_name('submit')[1].click()
-            cookies = {cookie['name']: cookie['value']
-                       for cookie in wd.get_cookies()
-                       if '_ga' not in cookie['name']}
-            cookies = {'JSESSIONID': cookies['JSESSIONID'], 'f5_cspm': cookies['f5_cspm'],
-                       'pageSize': '100', 'sortDir': 'asc', 'sortField': 'Document+Relevance'}
+        wd.get(main_page_url)
+        wd.find_element_by_id('userId').send_keys(credentials['icris_user'])  # login
+        wd.find_element_by_name('password').send_keys(credentials['icris_password'])  # password
+        wd.find_elements_by_name('submit')[1].click()
+        cookies = {cookie['name']: cookie['value']
+                   for cookie in wd.get_cookies()
+                   if '_ga' not in cookie['name']}
+        cookies = {'JSESSIONID': cookies['JSESSIONID'], 'f5_cspm': cookies['f5_cspm'],
+                   'pageSize': '100', 'sortDir': 'asc', 'sortField': 'Document+Relevance'}
 
-            tasks = []
-            sem = asyncio.Semaphore(20)
+        def fetch(record):
+            global total_count
+            if 'RECEPTION NO' not in record: return
+            if 'href' not in record: return
+            _id = record['_id']
+            reception = record['RECEPTION NO']
+            second_part = record['href'].split('=')[-1]
+            url = 'https://searchicris.co.weld.co.us/recorder/eagleweb/downloads/' + reception + '?id=' + second_part + '.A0&parent=' + second_part + '&preview=false&noredirect=true'
+            response = requests.get(url, cookies=cookies)
+            if response.status_code == 200:
+                pdf_name = '%s-%s.pdf' % (reception, second_part)
+                amazon_response = requests.post(self.amazon_url, data={'filename': pdf_name},
+                                                files={'file': response.content})
+                if amazon_response.status_code == 200:
+                    self.mongodb.set_pdf_url(_id, pdf_name)
+                    total_count += 1
+                    print('Fetched pdfs: ' + str(total_count))
 
-            async with ClientSession(cookies=cookies) as session:
-                for record in self.mongodb.get_records_without_pdf():
-                    if 'RECEPTION NO' not in record: continue
-                    if 'href' not in record: continue
-                    _id = record['_id']
-                    reception = record['RECEPTION NO']
-                    second_part = record['href'].split('=')[-1]
-                    url = 'https://searchicris.co.weld.co.us/recorder/eagleweb/downloads/' + reception + '?id=' + second_part + '.A0&parent=' + second_part + '&preview=false&noredirect=true'
-                    task = asyncio.ensure_future(self._bound_fetch_pdf(_id, sem, url, reception, second_part, session))
-                    tasks.append(task)
-
-                responses = asyncio.gather(*tasks)
-                await responses
-
-        loop = asyncio.get_event_loop()
-        future = asyncio.ensure_future(awaitable())
-        loop.run_until_complete(future)
+        pool = ThreadPool(10)
+        pool.map(fetch, self.mongodb.get_records_without_pdf())
+        pool.close()
+        pool.join()
 
 
 if __name__ == '__main__':
