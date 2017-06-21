@@ -12,6 +12,7 @@ from collections import namedtuple
 from selenium import webdriver
 from lxml import html
 from pymongo import MongoClient
+from pymongo.errors import DuplicateKeyError
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 number_of_scraped = 0
@@ -40,7 +41,10 @@ class Collector:
         self.collection = self.db['records']
 
     def insert_one(self, d):
-        self.collection.insert_one(d)
+        try:
+            self.collection.insert_one(d)
+        except DuplicateKeyError:
+            pass
 
     def get_unscraped_records_data(self, limit=0):
         return self.collection.find({"data" : {"$exists" : False}}).limit(limit)
@@ -168,7 +172,6 @@ class Spider():
                 d['href'] = td1.xpath(".//a/@href")[0]
                 d['header'] = html.tostring(tr).decode()
                 items.append(d)
-            print('Collected: ' + str(len(items)) + ' items')
             return items, next_link
         url_first_part = 'https://searchicris.co.weld.co.us/recorder'
         for date in self.dates:
@@ -184,7 +187,8 @@ class Spider():
                 if collected_links: items += collected_links
             print("Scraped " + str(len(items)) + " from " + date.start + " - " + date.end)
             if items:
-                map(lambda item: self.mongodb.update_one(**item), items)
+                for item in items:
+                    self.mongodb.insert_one(item)
 
     def crawl_records(self):
         def go(record):
@@ -270,8 +274,8 @@ if __name__ == '__main__':
     dates = Dates()
     spider = Spider(dates)
     spider.crawl_search_pages()
-    #spider.crawl_records()
-    #total_count = 0
-    #spider.upload_pdfs()
+    spider.crawl_records()
+    total_count = 0
+    spider.upload_pdfs()
     print('Finished')
 
