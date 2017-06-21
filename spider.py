@@ -183,11 +183,10 @@ class Spider():
                 collected_links, next_page = collect_links(url_first_part.replace('recorder','') + next_page)
                 if collected_links: items += collected_links
             print("Scraped " + str(len(items)) + " from " + date.start + " - " + date.end)
-            yield items
-            map(lambda item: self.mongodb.update_one(**item), items)
+            if items:
+                map(lambda item: self.mongodb.update_one(**item), items)
 
     def crawl_records(self):
-        base_url = 'https://searchicris.co.weld.co.us/recorder'
         def go(record):
             print('Scraping record')
             global number_of_scraped
@@ -267,13 +266,12 @@ class Spider():
         pool.close()
         pool.join()
 
-
 if __name__ == '__main__':
     dates = Dates()
     spider = Spider(dates)
     spider.crawl_search_pages()
-    spider.crawl_records()
-    total_count = 0
-    spider.upload_pdfs()
+    #spider.crawl_records()
+    #total_count = 0
+    #spider.upload_pdfs()
     print('Finished')
 
