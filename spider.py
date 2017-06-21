@@ -46,9 +46,10 @@ class Collector:
         return self.collection.find({"data" : {"$exists" : False}}).limit(limit)
 
     def get_records_without_pdf(self):
-        #return self.collection.find({"pdf_name" : {'$exists' : False}}, {'href' : 1, 'RECEPTION NO' : 1}).limit(100)
-        receptions = [line for line in open('reception_numbers.txt').read().split(',')]
-        return self.collection.find({'RECEPTION NO' : {'$in' : receptions}, 'pdf_name' : {'$exists' : False}})
+        return self.collection.find({"pdf_name" : {'$exists' : False}}, {'href' : 1, 'RECEPTION NO' : 1}).limit(500000)
+
+    def get_records_without_pdf_using_instruments(self):
+        return self.collection.find({"pdf_name" : {'$exists' : False}, 'INSTRUMENT TYPE' : 'OIL & GAS LEASE'}, {'href' : 1, 'RECEPTION NO' : 1})
 
     def set_pdf_url(self, _id, pdf_name):
         self.collection.update_one({'_id' : _id}, {'$set' : {'pdf_name' : pdf_name}})
@@ -62,8 +63,8 @@ class Dates:
         self.format = '%m/%d/%Y'
         self._today = datetime.now()
         self.next = 0
-        self._end = datetime.now() - timedelta(days=8)
-        self._start = datetime.now() - timedelta(days=7)
+        self._end = datetime.now() - timedelta(days=30)
+        self._start = datetime.now() - timedelta(days=31)
         self.Date = namedtuple('Date', ['start', 'end'])
         self.begin = self.Date(self._start.strftime(self.format),
                           self._end.strftime(self.format))
@@ -167,10 +168,12 @@ class Spider():
                 d['href'] = td1.xpath(".//a/@href")[0]
                 d['header'] = html.tostring(tr).decode()
                 items.append(d)
+            print('Collected: ' + str(len(items)) + ' items')
             return items, next_link
         url_first_part = 'https://searchicris.co.weld.co.us/recorder'
         for date in self.dates:
             #Scraping the first page
+            print('Scraping date: ' + str(date))
             items = []
             created_url = self.make_POST(date)
             url = url_first_part + created_url[2:]
@@ -186,6 +189,7 @@ class Spider():
     def crawl_records(self):
         base_url = 'https://searchicris.co.weld.co.us/recorder'
         def go(record):
+            print('Scraping record')
             global number_of_scraped
             global total_count
             if 'You must be logged in to access the requested page' in wd.page_source:
@@ -241,17 +245,24 @@ class Spider():
             reception = record['RECEPTION NO']
             second_part = record['href'].split('=')[-1]
             url = 'https://searchicris.co.weld.co.us/recorder/eagleweb/downloads/' + reception + '?id=' + second_part + '.A0&parent=' + second_part + '&preview=false&noredirect=true'
-            response = requests.get(url, cookies=cookies)
-            if response.status_code == 200:
-                pdf_name = '%s-%s.pdf' % (reception, second_part)
-                amazon_response = requests.post(self.amazon_url, data={'filename': pdf_name},
+            for i in range(0, 3):
+                try:
+                    response = requests.get(url, cookies=cookies, timeout=60)
+                    if response.status_code == 200:
+                        pdf_name = '%s-%s.pdf' % (reception, second_part)
+                        amazon_response = requests.post(self.amazon_url, data={'filename': pdf_name},
                                                 files={'file': response.content})
-                if amazon_response.status_code == 200:
-                    self.mongodb.set_pdf_url(_id, pdf_name)
-                    total_count += 1
-                    print('Fetched pdfs: ' + str(total_count))
+                        if amazon_response.status_code == 200:
+                            self.mongodb.set_pdf_url(_id, pdf_name)
+                            total_count += 1
+                            print('Fetched pdfs: ' + str(total_count))
+                    break
+                except requests.exceptions.Timeout:
+                    continue
+                except requests.exceptions.ConnectionError:
+                    continue
 
-        pool = ThreadPool(10)
+        pool = ThreadPool(5)
         pool.map(fetch, self.mongodb.get_records_without_pdf())
         pool.close()
         pool.join()
@@ -260,8 +271,8 @@ class Spider():
 if __name__ == '__main__':
     dates = Dates()
     spider = Spider(dates)
-    #spider.crawl_search_pages()
-    #spider.crawl_records()
+    spider.crawl_search_pages()
+    spider.crawl_records()
     total_count = 0
     spider.upload_pdfs()
     print('Finished')
