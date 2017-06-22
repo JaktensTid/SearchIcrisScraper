@@ -47,7 +47,7 @@ class Collector:
             pass
 
     def get_unscraped_records_data(self, limit=0):
-        return self.collection.find({"data" : {"$exists" : False}}).limit(limit)
+        return self.collection.find({"RECEPTION NO" : {"$exists" : False}}).limit(limit)
 
     def get_records_without_pdf(self):
         return self.collection.find({"pdf_name" : {'$exists' : False}}, {'href' : 1, 'RECEPTION NO' : 1}).limit(500000)
@@ -60,7 +60,9 @@ class Collector:
 
     def update_one(self, doc, data):
         self.collection.update_one({'_id' : doc['_id']}, {'$set' : {'data' : data}})
-
+    
+    def clear_data(self):
+        self.collection.update_many({'$unset' : {'data' : '', 'header' :''}})
 
 class Dates:
     def __init__(self):
@@ -150,6 +152,9 @@ class Spider():
                 return history.headers._store['location'][-1]
         return None
 
+    def clear_data(self):
+        self.mongodb.clear_data()
+
     def crawl_search_pages(self):
         def collect_links(url):
             '''Returns items + next page link'''
@@ -195,6 +200,8 @@ class Spider():
             print('Scraping record')
             global number_of_scraped
             global total_count
+            url = 'https://searchicris.co.weld.co.us/recorder' + record['href'][2:]
+            wd.get(url)
             if 'You must be logged in to access the requested page' in wd.page_source:
                 print('Refreshing cookies')
                 self.refresh_cookie()
@@ -213,7 +220,7 @@ class Spider():
 
             if data:
                 total_count += 1
-                print('Scraped ' + record['id'].strip() + ' Total: ' + str(total_count) + ' Time: ' + str(datetime.now()))
+                print('Scraped ' + url + ' Total: ' + str(total_count) + ' Time: ' + str(datetime.now()))
                 self.mongodb.update_one(record, data)
 
         for record in self.mongodb.get_unscraped_records_data():
@@ -271,11 +278,15 @@ class Spider():
         pool.join()
 
 if __name__ == '__main__':
+    import subprocess
     dates = Dates()
     spider = Spider(dates)
     spider.crawl_search_pages()
     spider.crawl_records()
     total_count = 0
+    process = subprocess.Popen('nodejs normalize_records.js', shell=True, stdout=subprocess.PIPE)
+    process.wait()
+    spider.clear_data()
     spider.upload_pdfs()
     print('Finished')
 

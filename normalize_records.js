@@ -9,7 +9,7 @@ var url = 'mongodb:\/\/' + obj['user'] + ':' + obj['password'] + '@' +
 	obj['host'] + ':' + obj['port'] + '/' + obj['db'];
 var counter = 0;
 MongoClient.connect(url, function(err, db) {
-var main = db.db('main');
+var main = db.db('data');
   var col = main.collection('records');
   col.find({'RECEPTION NO' : {'$exists' : false}}).each(function(err, mongodb_record) {
       if('header' in mongodb_record) {
