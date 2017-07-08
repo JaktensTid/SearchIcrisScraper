@@ -38,7 +38,7 @@ class Collector:
                                          credentials['db'])
         self.client = MongoClient(credentials)
         self.db = self.client['data']
-        self.collection = self.db['records']
+        self.collection = self.db['searchicrisrecords']
 
     def insert_one(self, d):
         try:
@@ -62,7 +62,7 @@ class Collector:
         self.collection.update_one({'_id' : doc['_id']}, {'$set' : {'data' : data}})
     
     def clear_data(self):
-        self.collection.update_many({'$unset' : {'data' : '', 'header' :''}})
+        self.collection.update_many({}, {'$unset' : {'data' : '', 'header' :''}})
 
 class Dates:
     def __init__(self):
@@ -246,7 +246,7 @@ class Spider():
                    if '_ga' not in cookie['name']}
         cookies = {'JSESSIONID': cookies['JSESSIONID'], 'f5_cspm': cookies['f5_cspm'],
                    'pageSize': '100', 'sortDir': 'asc', 'sortField': 'Document+Relevance'}
-
+        fh = open('pdfs.txt', 'a')
         def fetch(record):
             global total_count
             if 'RECEPTION NO' not in record: return
@@ -263,13 +263,16 @@ class Spider():
                         amazon_response = requests.post(self.amazon_url, data={'filename': pdf_name},
                                                 files={'file': response.content})
                         if amazon_response.status_code == 200:
-                            self.mongodb.set_pdf_url(_id, pdf_name)
+                            #self.mongodb.set_pdf_url(_id, pdf_name)
+                            fh.write(str(_id) + ':' + pdf_name + '\n')
                             total_count += 1
                             print('Fetched pdfs: ' + str(total_count))
                     break
                 except requests.exceptions.Timeout:
                     continue
                 except requests.exceptions.ConnectionError:
+                    continue
+                except Exception:
                     continue
 
         pool = ThreadPool(5)
@@ -281,12 +284,12 @@ if __name__ == '__main__':
     import subprocess
     dates = Dates()
     spider = Spider(dates)
-    spider.crawl_search_pages()
-    spider.crawl_records()
+    #spider.crawl_search_pages()
+    #spider.crawl_records()
     total_count = 0
-    process = subprocess.Popen('nodejs normalize_records.js', shell=True, stdout=subprocess.PIPE)
-    process.wait()
-    spider.clear_data()
+    #process = subprocess.Popen('nodejs normalize_records.js', shell=True, stdout=subprocess.PIPE)
+    #process.wait()
+    #spider.clear_data()
     spider.upload_pdfs()
     print('Finished')
 
